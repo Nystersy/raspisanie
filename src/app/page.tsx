@@ -24,8 +24,11 @@ import {
   getWeekNumber,
   getWeekStartDate,
   getWeekDates,
+  getWeekMonday,
+  getWeekDays,
   getDaySchedule,
   getWeekSchedule,
+  addDays,
   type SubjectKey,
   type DaySchedule,
 } from "@/lib/schedule-data";
@@ -133,125 +136,132 @@ function AppHeader() {
 // ── Экран «Сегодня» ─────────────────────────────────────────────────
 function TodayView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) => void }) {
   const today = useMemo(() => new Date(), []);
-  const schedule = useMemo(() => getDaySchedule(today), [today]);
+  // Сдвиг дней от сегодня: 0 = сегодня, +1 = завтра, -1 = вчера
+  const [offset, setOffset] = useState(0);
+  const [swipeDir, setSwipeDir] = useState(0);
+
+  const currentDate = useMemo(() => addDays(today, offset), [today, offset]);
+  const schedule = useMemo(() => getDaySchedule(currentDate), [currentDate]);
   const weekNumber = schedule.weekNumber;
+
+  const isToday = offset === 0;
+  const isFuture = offset > 0;
+
+  const relLabel = offset === 0 ? "Сегодня" : offset === 1 ? "Завтра" : offset === -1 ? "Вчера" : offset > 0 ? `Через ${offset} дн.` : `${Math.abs(offset)} дн. назад`;
+
+  const goPrev = () => {
+    setSwipeDir(-1);
+    setOffset((o) => o - 1);
+  };
+  const goNext = () => {
+    setSwipeDir(1);
+    setOffset((o) => o + 1);
+  };
 
   const noClasses =
     weekNumber < 1 || schedule.isWeekend || (!schedule.practice && schedule.lectures.length === 0);
 
   return (
     <div className="px-4 pt-5 pb-28 space-y-5">
-      {/* Дата */}
-      <div>
-        <p className="text-sm font-medium text-muted-foreground">
-          {WEEKDAYS_RU_FULL[today.getDay()]}
-        </p>
-        <div className="flex items-end gap-3 mt-1">
-          <h2 className="text-3xl font-bold tracking-tight capitalize">
-            {formatDateLong(today)}
+      {/* Шапка дня с навигацией */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={goPrev}
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:bg-muted transition-colors shrink-0"
+          aria-label="Предыдущий день"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="flex-1 text-center min-w-0">
+          <p className="text-sm font-medium text-muted-foreground">
+            {WEEKDAYS_RU_FULL[currentDate.getDay()]}
+          </p>
+          <h2 className="text-2xl font-bold tracking-tight capitalize mt-0.5">
+            {formatDateLong(currentDate)}
           </h2>
         </div>
-        {weekNumber >= 1 ? (
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 dark:bg-teal-950/40 px-3 py-1 text-xs font-medium text-teal-700 dark:text-teal-300">
+        <button
+          onClick={goNext}
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border hover:bg-muted transition-colors shrink-0"
+          aria-label="Следующий день"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Бейджи: относительная дата + номер недели */}
+      <div className="flex items-center justify-center gap-2 flex-wrap">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+            isToday
+              ? "bg-teal-500 text-white"
+              : isFuture
+              ? "bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300"
+              : "bg-stone-100 dark:bg-stone-800/50 text-stone-600 dark:text-stone-300"
+          }`}
+        >
+          {isToday && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+          {relLabel}
+        </span>
+        {weekNumber >= 1 && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 dark:bg-teal-950/40 px-3 py-1 text-xs font-medium text-teal-700 dark:text-teal-300">
             <CalendarDays className="h-3.5 w-3.5" />
             Неделя {weekNumber} из {SEMESTER.totalWeeks}
-          </div>
-        ) : (
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-stone-100 dark:bg-stone-800/50 px-3 py-1 text-xs font-medium text-stone-600 dark:text-stone-300">
-            Вне семестра
-          </div>
+          </span>
         )}
       </div>
 
-      {/* Контент */}
-      {schedule.isHoliday && schedule.holidayNote ? (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-8 text-center"
-        >
-          <PartyPopper className="mx-auto h-10 w-10 text-amber-400" />
-          <p className="mt-3 font-semibold">{schedule.holidayNote}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Занятий нет</p>
-        </motion.div>
-      ) : noClasses ? (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center"
-        >
-          <Sun className="mx-auto h-10 w-10 text-amber-400" />
-          <p className="mt-3 font-semibold">Выходной день</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Занятий сегодня нет. Хорошего отдыха!
-          </p>
-        </motion.div>
-      ) : (
-        <div className="space-y-3">
-          <AnimatePresence mode="popLayout">
-            {TIME_SLOTS.map((slot) => {
-              let content: React.ReactNode = null;
-              if (slot.kind === "practice") {
-                if (!schedule.practice) {
-                  content = (
-                    <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                      Практическое занятие не запланировано
-                    </div>
-                  );
-                } else {
-                  content = (
-                    <SubjectCard
-                      subjectKey={schedule.practice}
-                      time={slot.time}
-                      label="Практическое занятие"
-                      onClick={() => onSelectSubject(schedule.practice!)}
-                    />
-                  );
-                }
-              } else {
-                const lecture = schedule.lectures.find((l) => l.slot === slot.kind);
-                if (!lecture) {
-                  content = (
-                    <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                      Лекция не запланирована
-                    </div>
-                  );
-                } else {
-                  content = (
-                    <SubjectCard
-                      subjectKey={lecture.subject}
-                      time={slot.time}
-                      label="Лекция"
-                      room={lecture.room}
-                      onClick={() => onSelectSubject(lecture.subject)}
-                    />
-                  );
-                }
-              }
-              return (
-                <motion.div
-                  key={slot.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {content}
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-          {schedule.note && (
-            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3">
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                <span className="font-semibold">Примечание: </span>
-                {schedule.note}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Подсказка о свайпе */}
+      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
+        <ChevronLeft className="h-3 w-3" />
+        <span>Свайп влево/вправо — листать дни</span>
+        <ChevronRight className="h-3 w-3" />
+      </div>
+
+      {/* Контент с поддержкой свайпа */}
+      <div
+        className="touch-pan-y"
+        onPointerDown={(e) => {
+          (e.currentTarget as HTMLElement).dataset.startX = String(e.clientX);
+        }}
+        onPointerUp={(e) => {
+          const el = e.currentTarget as HTMLElement;
+          const startX = parseFloat(el.dataset.startX ?? "0");
+          const dx = e.clientX - startX;
+          if (Math.abs(dx) > 60) {
+            if (dx < 0) goNext();
+            else goPrev();
+          }
+          delete el.dataset.startX;
+        }}
+      >
+        <AnimatePresence mode="wait" custom={swipeDir} initial={false}>
+          <motion.div
+            key={offset}
+            custom={swipeDir}
+            variants={{
+              enter: (dir: number) => ({
+                x: dir > 0 ? 80 : -80,
+                opacity: 0,
+              }),
+              center: { x: 0, opacity: 1 },
+              exit: (dir: number) => ({
+                x: dir > 0 ? -80 : 80,
+                opacity: 0,
+              }),
+            }}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <DayContent
+              schedule={schedule}
+              onSelectSubject={onSelectSubject}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
 
       {/* Заметки */}
       <div className="rounded-2xl bg-muted/40 p-4">
@@ -271,6 +281,106 @@ function TodayView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) => vo
   );
 }
 
+// ── Содержимое одного дня (практика + лекции) ───────────────────────
+function DayContent({
+  schedule,
+  onSelectSubject,
+}: {
+  schedule: DaySchedule;
+  onSelectSubject: (k: SubjectKey) => void;
+}) {
+  const noClasses =
+    schedule.weekNumber < 1 ||
+    schedule.isWeekend ||
+    (!schedule.practice && schedule.lectures.length === 0);
+
+  if (schedule.isHoliday && schedule.holidayNote) {
+    return (
+      <div className="rounded-2xl border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-8 text-center">
+        <PartyPopper className="mx-auto h-10 w-10 text-amber-400" />
+        <p className="mt-3 font-semibold">{schedule.holidayNote}</p>
+        <p className="mt-1 text-sm text-muted-foreground">Занятий нет</p>
+      </div>
+    );
+  }
+
+  if (noClasses) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center">
+        <Sun className="mx-auto h-10 w-10 text-amber-400" />
+        <p className="mt-3 font-semibold">Выходной день</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Занятий в этот день нет. Хорошего отдыха!
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {TIME_SLOTS.map((slot) => {
+        let content: React.ReactNode = null;
+        if (slot.kind === "practice") {
+          if (!schedule.practice) {
+            content = (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                Практическое занятие не запланировано
+              </div>
+            );
+          } else {
+            content = (
+              <SubjectCard
+                subjectKey={schedule.practice}
+                time={slot.time}
+                label="Практическое занятие"
+                onClick={() => onSelectSubject(schedule.practice!)}
+              />
+            );
+          }
+        } else {
+          const lecture = schedule.lectures.find((l) => l.slot === slot.kind);
+          if (!lecture) {
+            content = (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                Лекция не запланирована
+              </div>
+            );
+          } else {
+            content = (
+              <SubjectCard
+                subjectKey={lecture.subject}
+                time={slot.time}
+                label="Лекция"
+                room={lecture.room}
+                onClick={() => onSelectSubject(lecture.subject)}
+              />
+            );
+          }
+        }
+        return (
+          <motion.div
+            key={slot.id}
+            layout
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            {content}
+          </motion.div>
+        );
+      })}
+      {schedule.note && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3">
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            <span className="font-semibold">Примечание: </span>
+            {schedule.note}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Экран «Неделя» ──────────────────────────────────────────────────
 function WeekView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) => void }) {
   const today = useMemo(() => new Date(), []);
@@ -278,8 +388,9 @@ function WeekView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) => voi
   const [week, setWeek] = useState(initialWeek);
 
   const weekData = useMemo(() => WEEKS.find((w) => w.week === week), [week]);
-  const days = useMemo(() => getWeekSchedule(week), [week]);
-  const startDate = getWeekStartDate(week);
+  // Используем все 6 дней недели Пн–Сб (даже если в какой-то день нет занятий)
+  const weekDays = useMemo(() => getWeekDays(week), [week]);
+  const monday = useMemo(() => getWeekMonday(week), [week]);
 
   const canPrev = week > 1;
   const canNext = week < SEMESTER.totalWeeks;
@@ -326,14 +437,15 @@ function WeekView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) => voi
         </div>
       )}
 
-      {/* Дни недели */}
+      {/* Дни недели Пн–Сб по порядку */}
       <div className="space-y-4">
-        {days.length === 0 ? (
+        {weekDays.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
             Нет данных для этой недели
           </div>
         ) : (
-          days.map(({ date, schedule }, idx) => {
+          weekDays.map((date, idx) => {
+            const schedule = getDaySchedule(date);
             const isToday = date.toDateString() === today.toDateString();
             return (
               <DayRow
@@ -500,8 +612,9 @@ function SemesterView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) =>
       <div className="space-y-2.5">
         {WEEKS.map((weekData) => {
           const w = weekData.week;
-          const weekDates = getWeekDates(w);
-          const startDate = weekDates[0];
+          // Все 6 дней недели Пн–Сб по порядку
+          const weekDays = getWeekDays(w);
+          const monday = getWeekMonday(w);
           const isCurrent = w === currentWeek;
           return (
             <div
@@ -524,7 +637,7 @@ function SemesterView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) =>
                     {w}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {startDate ? formatDateShort(startDate) : ""}
+                    {monday ? formatDateShort(monday) : ""}
                   </span>
                 </div>
                 {isCurrent && (
@@ -534,10 +647,9 @@ function SemesterView({ onSelectSubject }: { onSelectSubject: (k: SubjectKey) =>
                 )}
               </div>
               <div className="grid grid-cols-6 gap-1.5">
-                {weekDates.map((date, idx) => {
-                  const subj = weekData.days[
-                    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
-                  ];
+                {weekDays.map((date, idx) => {
+                  const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+                  const subj = weekData.days[isoDate];
                   if (!subj) {
                     return (
                       <div
